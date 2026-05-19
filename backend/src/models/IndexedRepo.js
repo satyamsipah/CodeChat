@@ -4,8 +4,14 @@ const indexedRepoSchema = new mongoose.Schema({
   userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   githubUrl: { type: String, required: true },
   fileList:  [{ path: String, size: Number }],
-  // 'indexing' while cloning/walking, 'ready' on success, 'error' on failure
-  status:    { type: String, enum: ['indexing', 'ready', 'error'], default: 'indexing' },
+  // Week 1 values kept for backward compat; Week 2 uses pending/indexing/indexed/failed
+  status: {
+    type: String,
+    enum: ['pending', 'indexing', 'indexed', 'failed', 'ready', 'error'],
+    default: 'pending',
+  },
+  chunksTotal:   { type: Number, default: 0 },
+  chunksIndexed: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 });
 
