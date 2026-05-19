@@ -12,6 +12,8 @@ const indexedRepoSchema = new mongoose.Schema({
   },
   chunksTotal:   { type: Number, default: 0 },
   chunksIndexed: { type: Number, default: 0 },
+  // Serialized MiniSearch BM25 index — storeFields carry filePath/lineStart/lineEnd/text
+  bm25Index:     { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
 });
 

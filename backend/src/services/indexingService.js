@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import MiniSearch from 'minisearch';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import IndexedRepo from '../models/IndexedRepo.js';
 import chromaClient from './chromaClient.js';
@@ -77,7 +78,17 @@ export async function startIndexing(repo, tmpDir) {
     await IndexedRepo.findByIdAndUpdate(repo._id, { chunksTotal: allChunks.length });
     console.log(`[indexing] ${repo.githubUrl} — ${allChunks.length} chunks to embed`);
 
-    // ── Phase 2: embed in batches and store in ChromaDB ────────────────────
+    // ── Phase 2: build BM25 index and persist to MongoDB ───────────────────
+    // MiniSearch storeFields carry full chunk text — no separate chunk map needed
+    const miniSearch = new MiniSearch({
+      fields: ['text', 'filePath'],
+      storeFields: ['filePath', 'lineStart', 'lineEnd', 'chunkIndex', 'text'],
+    });
+    miniSearch.addAll(allChunks.map((c, i) => ({ id: i, ...c })));
+    await IndexedRepo.findByIdAndUpdate(repo._id, { bm25Index: JSON.stringify(miniSearch) });
+    console.log(`[indexing] BM25 index built (${allChunks.length} docs)`);
+
+    // ── Phase 3: embed in batches and store in ChromaDB ────────────────────
     let indexed = 0;
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
       const batch = allChunks.slice(i, i + BATCH_SIZE);
