@@ -2,16 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function AddRepo() {
-  const [url, setUrl]       = useState('');
-  const [files, setFiles]   = useState(null);
-  const [error, setError]   = useState('');
+  const [url, setUrl]         = useState('');
+  const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    setFiles(null);
     setLoading(true);
     try {
       const res = await fetch('http://localhost:5000/api/repos/index', {
@@ -22,7 +20,8 @@ export default function AddRepo() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
-      setFiles(data);
+      // Navigate immediately — ChatShell handles progress polling
+      navigate(`/chat/${data.indexId}`);
     } catch {
       setError('Network error — is the backend running?');
     } finally {
@@ -39,7 +38,12 @@ export default function AddRepo() {
     <div className="min-h-screen bg-slate-900 p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-semibold text-white">Index a Repository</h1>
+          <div>
+            <h1 className="text-2xl font-semibold text-white">Index a Repository</h1>
+            <p className="text-slate-400 text-sm mt-1">
+              Paste a public GitHub URL — cloning takes ~30 s, embedding runs in the background.
+            </p>
+          </div>
           <button
             onClick={handleLogout}
             className="text-sm text-slate-400 hover:text-white transition-colors"
@@ -48,7 +52,7 @@ export default function AddRepo() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex gap-3 mb-6">
+        <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="url" required
             value={url} onChange={(e) => setUrl(e.target.value)}
@@ -64,37 +68,8 @@ export default function AddRepo() {
         </form>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/40 px-4 py-3 text-sm text-red-300">
+          <div className="mt-4 rounded-lg bg-red-500/20 border border-red-500/40 px-4 py-3 text-sm text-red-300">
             {error}
-          </div>
-        )}
-
-        {loading && (
-          <p className="text-slate-400 text-sm">
-            Cloning and walking the file tree — this can take 30–60 s for large repos…
-          </p>
-        )}
-
-        {files && (
-          <div className="bg-slate-800 rounded-2xl p-5">
-            <p className="text-slate-300 text-sm mb-3">
-              Found <span className="text-violet-400 font-semibold">{files.fileCount}</span> text files
-              {' '}— <span className="text-slate-500 text-xs">repo ID: {files.repoId}</span>
-            </p>
-            <ul className="space-y-1 max-h-96 overflow-y-auto text-xs font-mono">
-              {files.files.map((f) => (
-                <li key={f.path} className="flex justify-between text-slate-300">
-                  <span className="truncate mr-4">{f.path}</span>
-                  <span className="text-slate-500 shrink-0">{(f.size / 1024).toFixed(1)} KB</span>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => navigate('/chat')}
-              className="mt-4 w-full rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-sm font-medium text-white transition-colors"
-            >
-              Go to Chat →
-            </button>
           </div>
         )}
       </div>

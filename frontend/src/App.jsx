@@ -14,8 +14,8 @@ export default function App() {
 
         {/* Protected routes — redirects to /login if not authenticated */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/add-repo" element={<AddRepo />} />
-          <Route path="/chat"     element={<ChatShell />} />
+          <Route path="/add-repo"        element={<AddRepo />} />
+          <Route path="/chat/:indexId"   element={<ChatShell />} />
         </Route>
 
         {/* Redirect root to /login by default */}
