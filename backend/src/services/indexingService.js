@@ -11,7 +11,7 @@ const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' 
 
 const MAX_FILE_BYTES = 512_000; // 500 KB — skip files larger than this
 const BATCH_SIZE = 5;           // chunks per batchEmbedContents call
-const BATCH_DELAY_MS = 200;     // pause between batches (free-tier rate limit guard)
+const BATCH_DELAY_MS = 1000;    // 1s between batches → ~5 req/s, well under Gemini free-tier limit
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -25,18 +25,21 @@ async function embedBatch(chunks) {
     taskType: 'RETRIEVAL_DOCUMENT',
   }));
 
-  try {
-    const result = await embeddingModel.batchEmbedContents({ requests });
-    return result.embeddings.map((e) => e.values);
-  } catch (err) {
-    // 429 = rate limited — wait longer and retry once
-    if (err?.status === 429) {
-      console.warn('[indexing] Rate limited (429) — retrying after 500 ms');
-      await sleep(500);
+  // Exponential backoff: 3 retries at 2s, 4s, 8s
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    try {
       const result = await embeddingModel.batchEmbedContents({ requests });
       return result.embeddings.map((e) => e.values);
+    } catch (err) {
+      const is429 = err?.status === 429 || String(err?.message).includes('429');
+      if (is429 && attempt < 3) {
+        const delay = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s
+        console.warn(`[indexing] Rate limited (429) — waiting ${delay / 1000}s (attempt ${attempt + 1}/3)`);
+        await sleep(delay);
+      } else {
+        throw err;
+      }
     }
-    throw err;
   }
 }
 
