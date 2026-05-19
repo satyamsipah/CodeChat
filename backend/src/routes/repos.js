@@ -9,10 +9,10 @@ import IndexedRepo from '../models/IndexedRepo.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { startIndexing } from '../services/indexingService.js';
 import chromaClient from '../services/chromaClient.js';
+import { hybridSearch } from '../services/retrieval/hybridRetrieval.js';
 
 const router = Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
 const llm = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,30 +102,22 @@ router.post('/:indexId/query', requireAuth, async (req, res) => {
   if (repo.status !== 'indexed')
     return res.status(400).json({ error: `Repo is not ready (status: ${repo.status})` });
 
-  // Embed the user's query — use RETRIEVAL_QUERY task type for best retrieval results
-  const embedResult = await embeddingModel.embedContent({
-    content: { parts: [{ text: query }] },
-    taskType: 'RETRIEVAL_QUERY',
-  });
-  const queryVector = embedResult.embedding.values;
-
-  // Retrieve top 10 semantically similar chunks from ChromaDB
+  // Hybrid retrieval: semantic + BM25 keyword search → RRF → cross-encoder re-rank → top 8
   const collection = await chromaClient.getCollection({ name: `repo_${repo._id}` });
-  const results = await collection.query({ queryEmbeddings: [queryVector], nResults: 10 });
+  const top8 = await hybridSearch(query, repo._id, collection);
 
-  // Build context block: each result gets a citation header + chunk text
-  const sources = results.metadatas[0].map((meta, i) => ({
-    filePath:  meta.filePath,
-    lineStart: meta.lineStart,
-    lineEnd:   meta.lineEnd,
-    text:      results.documents[0][i],
+  const sources = top8.map((s) => ({
+    filePath:  s.filePath,
+    lineStart: s.lineStart,
+    lineEnd:   s.lineEnd,
+    text:      s.text,
   }));
 
-  const contextBlock = sources
+  const contextBlock = top8
     .map((s) => `[${s.filePath}:${s.lineStart}-${s.lineEnd}]\n${s.text}`)
     .join('\n\n');
 
-  const prompt = `You are a codebase Q&A assistant. Answer using ONLY the provided code context below. Cite every claim with its source as [filePath:lineStart-lineEnd]. If the context does not contain enough information to answer, say so clearly.
+  const prompt = `You are a codebase Q&A assistant. The snippets below were retrieved using hybrid semantic + BM25 keyword search, re-ranked by a cross-encoder. Answer using ONLY these snippets. Cite every claim as [filePath:lineStart-lineEnd]. If the answer is not in the snippets, say so explicitly.
 
 CODE CONTEXT:
 ${contextBlock}
