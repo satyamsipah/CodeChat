@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 export default function AddRepo() {
   const [url, setUrl]         = useState('');
   const [error, setError]     = useState('');
@@ -12,7 +14,7 @@ export default function AddRepo() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/repos/index', {
+      const res = await fetch(`${API_URL}/api/repos/index`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -30,7 +32,7 @@ export default function AddRepo() {
   }
 
   async function handleLogout() {
-    await fetch('http://localhost:5000/api/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     navigate('/login');
   }
 

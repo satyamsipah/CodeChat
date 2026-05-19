@@ -3,7 +3,7 @@ import path from 'path';
 import MiniSearch from 'minisearch';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import IndexedRepo from '../models/IndexedRepo.js';
-import chromaClient from './chromaClient.js';
+import Chunk from '../models/Chunk.js';
 import { chunkFile } from './parsing/chunker.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -55,16 +55,8 @@ export async function startIndexing(repo, tmpDir) {
     // ── Phase 1: count all chunks so we can set chunksTotal early ──────────
     await IndexedRepo.findByIdAndUpdate(repo._id, { status: 'indexing', chunksTotal: 0 });
 
-    // Delete + recreate the ChromaDB collection (handles re-index cleanly)
-    try {
-      await chromaClient.deleteCollection({ name: `repo_${repo._id}` });
-    } catch {
-      // Collection didn't exist yet — fine
-    }
-    const collection = await chromaClient.createCollection({
-      name: `repo_${repo._id}`,
-      metadata: { 'hnsw:space': 'cosine' },
-    });
+    // Delete existing chunks for this repo (handles re-index cleanly)
+    await Chunk.deleteMany({ repoId: repo._id });
 
     // First pass: build the full chunk list in memory
     // We do this so we can set chunksTotal before the slow embedding loop begins
@@ -97,19 +89,18 @@ export async function startIndexing(repo, tmpDir) {
       const batch = allChunks.slice(i, i + BATCH_SIZE);
       const vectors = await embedBatch(batch);
 
-      // ChromaDB add() expects parallel arrays
-      await collection.add({
-        ids:        batch.map((c) => `${repo._id}_${c.filePath}_${c.chunkIndex}`),
-        embeddings: vectors,
-        documents:  batch.map((c) => c.text),
-        metadatas:  batch.map((c) => ({
-          filePath:   c.filePath,
-          lineStart:  c.lineStart,
-          lineEnd:    c.lineEnd,
-          repoId:     String(repo._id),
-          chunkIndex: c.chunkIndex,
-        })),
-      });
+      // Store chunks with embeddings in Atlas
+      await Chunk.insertMany(
+        batch.map((chunk, i) => ({
+          repoId:     repo._id,
+          text:       chunk.text,
+          filePath:   chunk.filePath,
+          lineStart:  chunk.lineStart,
+          lineEnd:    chunk.lineEnd,
+          chunkIndex: chunk.chunkIndex,
+          embedding:  vectors[i],
+        }))
+      );
 
       indexed += batch.length;
       // Update DB progress every batch so the status endpoint shows real-time progress

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 
-const API = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // ── Indexing progress view ────────────────────────────────────────────────────
 function IndexingView({ status, chunksIndexed, chunksTotal, githubUrl }) {
@@ -49,19 +50,34 @@ function IndexingView({ status, chunksIndexed, chunksTotal, githubUrl }) {
 }
 
 // ── Single chat message bubble ─────────────────────────────────────────────────
-function MessageBubble({ msg }) {
+function MessageBubble({ msg, githubUrl }) {
   const isUser = msg.role === 'user';
+
+  const makeSourceHref = (s) => {
+    const match = githubUrl?.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+    const repoPath = match ? match[1] : '';
+    return repoPath
+      ? `https://github.com/${repoPath}/blob/main/${s.filePath}#L${s.lineStart}`
+      : null;
+  };
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
       <div className={`max-w-2xl ${isUser ? 'order-2' : ''}`}>
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
             isUser
-              ? 'bg-violet-600 text-white rounded-br-sm'
+              ? 'bg-violet-600 text-white rounded-br-sm whitespace-pre-wrap'
               : 'bg-slate-800 text-slate-100 rounded-bl-sm'
           }`}
         >
-          {msg.content}
+          {isUser ? (
+            msg.content
+          ) : (
+            <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
+              {msg.content}
+            </ReactMarkdown>
+          )}
         </div>
 
         {/* Collapsible sources under assistant messages */}
@@ -71,16 +87,27 @@ function MessageBubble({ msg }) {
               {msg.sources.length} source{msg.sources.length !== 1 ? 's' : ''}
             </summary>
             <div className="mt-2 space-y-2">
-              {msg.sources.map((s, i) => (
-                <div key={i} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
-                  <p className="text-xs font-mono text-violet-400 mb-1">
-                    {s.filePath}:{s.lineStart}-{s.lineEnd}
-                  </p>
-                  <pre className="text-xs text-slate-400 overflow-hidden line-clamp-3 whitespace-pre-wrap">
-                    {s.text}
-                  </pre>
-                </div>
-              ))}
+              {msg.sources.map((s, i) => {
+                const href = makeSourceHref(s);
+                return (
+                  <div key={i} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-mono text-violet-400 hover:underline mb-1 block"
+                      >
+                        {s.filePath}:{s.lineStart}-{s.lineEnd} ↗
+                      </a>
+                    ) : (
+                      <p className="text-xs font-mono text-violet-400 mb-1">
+                        {s.filePath}:{s.lineStart}-{s.lineEnd}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </details>
         )}
@@ -100,19 +127,23 @@ export default function ChatShell() {
   const [githubUrl, setGithubUrl]     = useState('');
   const [messages, setMessages]       = useState([]);
   const [input, setInput]             = useState('');
-  const [loading, setLoading]         = useState(false);
+  const [loading, setLoading]         = useState(false);   // waiting for first token
+  const [isStreaming, setIsStreaming]  = useState(false);   // tokens arriving
+  const [streamingContent, setStreamingContent] = useState('');
 
-  const pollTimer  = useRef(null);
-  const bottomRef  = useRef(null);
+  // useRef to accumulate tokens — avoids stale-closure issues in the async loop
+  const accRef      = useRef('');
+  const pollTimer   = useRef(null);
+  const bottomRef   = useRef(null);
   const textareaRef = useRef(null);
 
-  // Scroll to bottom whenever messages change
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  // Scroll to bottom whenever messages or streaming content change
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent]);
 
   // ── Status polling ──────────────────────────────────────────────────────────
   const pollStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/repos/${indexId}/status`, { credentials: 'include' });
+      const res = await fetch(`${API_URL}/api/repos/${indexId}/status`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       setStatus(data.status);
@@ -123,7 +154,6 @@ export default function ChatShell() {
   }, [indexId]);
 
   useEffect(() => {
-    // Immediately fetch so we don't wait 3 s for first paint
     pollStatus();
     pollTimer.current = setInterval(pollStatus, 3000);
     return () => clearInterval(pollTimer.current);
@@ -136,33 +166,88 @@ export default function ChatShell() {
     }
   }, [status]);
 
-  // ── Query submission ────────────────────────────────────────────────────────
+  // ── Query submission — SSE streaming ───────────────────────────────────────
   async function handleSubmit() {
     const q = input.trim();
-    if (!q || loading) return;
+    if (!q || loading || isStreaming) return;
 
     setMessages((prev) => [...prev, { role: 'user', content: q }]);
     setInput('');
     setLoading(true);
+    accRef.current = '';
+    setStreamingContent('');
 
     try {
-      const res = await fetch(`${API}/api/repos/${indexId}/query`, {
-        method: 'POST',
+      const response = await fetch(`${API_URL}/api/repos/${indexId}/query`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ query: q }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+
+      if (!response.ok) {
+        // Non-SSE error (auth failure, 400, etc.)
+        const data = await response.json().catch(() => ({ error: 'Unknown error' }));
         setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
-      } else {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.answer, sources: data.sources }]);
+        return;
+      }
+
+      setLoading(false);
+      setIsStreaming(true);
+
+      const reader  = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalSources = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop(); // keep the incomplete trailing chunk
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          let data;
+          try { data = JSON.parse(part.slice(6)); } catch { continue; }
+
+          if (data.type === 'token') {
+            accRef.current += data.token;
+            setStreamingContent(accRef.current);
+          } else if (data.type === 'sources') {
+            finalSources = data.sources;
+          } else if (data.type === 'done') {
+            setMessages((prev) => [
+              ...prev,
+              { role: 'assistant', content: accRef.current, sources: finalSources },
+            ]);
+            accRef.current = '';
+            setStreamingContent('');
+            setIsStreaming(false);
+          } else if (data.type === 'error') {
+            setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${data.message}` }]);
+            setIsStreaming(false);
+          }
+        }
+      }
+
+      // Fallback: if stream ended without a 'done' event, commit whatever was accumulated
+      if (accRef.current) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: accRef.current, sources: finalSources },
+        ]);
+        accRef.current = '';
+        setStreamingContent('');
+        setIsStreaming(false);
       }
     } catch {
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Network error — is the backend running?' }]);
     } finally {
       setLoading(false);
-      // Re-focus textarea after response
+      setIsStreaming(false);
       setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }
@@ -175,11 +260,12 @@ export default function ChatShell() {
   }
 
   async function handleLogout() {
-    await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     navigate('/login');
   }
 
-  const isIndexed = status === 'indexed' || status === 'ready';
+  const isIndexed  = status === 'indexed' || status === 'ready';
+  const isBusy     = loading || isStreaming;
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-200">
@@ -240,16 +326,21 @@ export default function ChatShell() {
           />
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {messages.length === 0 && (
+            {messages.length === 0 && !isStreaming && (
               <div className="flex items-center justify-center h-full">
                 <p className="text-slate-500 text-sm">Ask anything about the codebase.</p>
               </div>
             )}
-            {messages.map((msg, i) => <MessageBubble key={i} msg={msg} />)}
+            {messages.map((msg, i) => (
+              <MessageBubble key={i} msg={msg} githubUrl={githubUrl} />
+            ))}
+
+            {/* "Searching codebase…" spinner — shown before first token arrives */}
             {loading && (
               <div className="flex justify-start mb-4">
                 <div className="bg-slate-800 rounded-2xl rounded-bl-sm px-4 py-3">
-                  <span className="inline-flex gap-1">
+                  <span className="text-xs text-slate-400">Searching codebase…</span>
+                  <span className="inline-flex gap-1 ml-2">
                     {[0, 1, 2].map((i) => (
                       <span
                         key={i}
@@ -261,6 +352,20 @@ export default function ChatShell() {
                 </div>
               </div>
             )}
+
+            {/* Streaming bubble — live token-by-token output */}
+            {isStreaming && (
+              <div className="flex justify-start mb-4">
+                <div className="max-w-2xl bg-slate-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed text-slate-100">
+                  <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
+                    {streamingContent}
+                  </ReactMarkdown>
+                  {/* Blinking cursor */}
+                  <span className="inline-block w-0.5 h-4 bg-violet-400 animate-pulse ml-0.5 align-text-bottom" />
+                </div>
+              </div>
+            )}
+
             <div ref={bottomRef} />
           </div>
         )}
@@ -274,20 +379,19 @@ export default function ChatShell() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={!isIndexed || loading}
+              disabled={!isIndexed || isBusy}
               placeholder={isIndexed ? 'Ask a question about the codebase… (Enter to send, Shift+Enter for newline)' : 'Waiting for indexing to complete…'}
               className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 resize-none focus:outline-none max-h-40 overflow-y-auto"
               style={{ fieldSizing: 'content' }}
             />
             <button
               onClick={handleSubmit}
-              disabled={!isIndexed || loading || !input.trim()}
+              disabled={!isIndexed || isBusy || !input.trim()}
               className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 text-xs font-medium text-white transition-colors"
             >
               Send
             </button>
           </div>
-          {/* TODO (Week 4): replace with SSE streaming */}
         </div>
       </main>
     </div>

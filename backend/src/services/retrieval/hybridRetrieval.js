@@ -1,9 +1,11 @@
-// Hybrid retrieval: semantic (ChromaDB) + keyword (BM25/MiniSearch) + RRF + cross-encoder re-rank.
+// Hybrid retrieval: semantic (Atlas $vectorSearch) + keyword (BM25/MiniSearch) + RRF + cross-encoder re-rank.
 // Returns top 8 chunks ready for the LLM prompt.
 
 import MiniSearch from 'minisearch';
+import mongoose from 'mongoose';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import IndexedRepo from '../../models/IndexedRepo.js';
+import Chunk from '../../models/Chunk.js';
 
 const genAI  = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const embedModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
@@ -77,12 +79,11 @@ async function rerank(query, top30) {
  * Full hybrid retrieval pipeline for a single query.
  *
  * @param {string} query
- * @param {string|ObjectId} indexId    - IndexedRepo._id
- * @param {object} chromaCollection    - live ChromaDB collection object
+ * @param {string|ObjectId} indexId - IndexedRepo._id
  * @returns {Promise<Array<{filePath,lineStart,lineEnd,text,rrfScore,rerankScore?}>>}
  *   Always returns exactly 8 chunks (or fewer if the index is tiny).
  */
-export async function hybridSearch(query, indexId, chromaCollection) {
+export async function hybridSearch(query, indexId) {
   // 1. Embed query with RETRIEVAL_QUERY task type
   const embedResult = await embedModel.embedContent({
     content: { parts: [{ text: query }] },
@@ -90,17 +91,30 @@ export async function hybridSearch(query, indexId, chromaCollection) {
   });
   const queryVector = embedResult.embedding.values;
 
-  // 2. Semantic search — top 20 from ChromaDB
-  const chromaResult = await chromaCollection.query({
-    queryEmbeddings: [queryVector],
-    nResults: 20,
-  });
-  const semanticResults = chromaResult.metadatas[0].map((meta, i) => ({
-    filePath:  meta.filePath,
-    lineStart: meta.lineStart,
-    lineEnd:   meta.lineEnd,
-    text:      chromaResult.documents[0][i],
-  }));
+  // 2. Semantic search — top 20 from Atlas Vector Search
+  const semanticResults = await Chunk.aggregate([
+    {
+      $vectorSearch: {
+        index: 'chunks_vector_index',
+        path: 'embedding',
+        queryVector,
+        numCandidates: 100,
+        limit: 20,
+        filter: { repoId: new mongoose.Types.ObjectId(String(indexId)) },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        text: 1,
+        filePath: 1,
+        lineStart: 1,
+        lineEnd: 1,
+        chunkIndex: 1,
+        score: { $meta: 'vectorSearchScore' },
+      },
+    },
+  ]);
 
   // 3. BM25 keyword search — load serialized index from MongoDB
   const repo = await IndexedRepo.findById(indexId).select('bm25Index');
