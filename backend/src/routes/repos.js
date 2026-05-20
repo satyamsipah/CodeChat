@@ -100,12 +100,11 @@ router.post('/:indexId/query', requireAuth, async (req, res) => {
   if (repo.status !== 'indexed')
     return res.status(400).json({ error: `Repo is not ready (status: ${repo.status})` });
 
-  res.writeHead(200, {
-    'Content-Type':  'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection':    'keep-alive',
-    'Access-Control-Allow-Origin': process.env.FRONTEND_URL || '*',
-  });
+  // Set SSE-specific headers without overwriting CORS headers already applied by middleware
+  res.setHeader('Content-Type',  'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection',    'keep-alive');
+  res.flushHeaders(); // flush headers immediately so the browser opens the stream
 
   try {
     // Hybrid retrieval: Atlas $vectorSearch + BM25 → RRF → cross-encoder → top 8
