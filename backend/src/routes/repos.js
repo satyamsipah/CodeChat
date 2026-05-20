@@ -137,7 +137,17 @@ QUESTION: ${query}`;
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+    // Return a human-readable message instead of the raw API error
+    let message = 'Something went wrong — please try again.';
+    const raw = err.message || '';
+    if (raw.includes('429') || raw.toLowerCase().includes('quota')) {
+      message = 'Gemini API rate limit reached. The free tier allows a limited number of requests per minute — please wait 60 seconds and try again.';
+    } else if (raw.includes('API_KEY') || raw.includes('401') || raw.includes('403')) {
+      message = 'Gemini API key is invalid or missing. Check the GEMINI_API_KEY environment variable.';
+    } else if (raw.includes('503') || raw.toLowerCase().includes('unavailable')) {
+      message = 'Gemini API is temporarily unavailable. Please try again in a moment.';
+    }
+    res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
     res.end();
   }
 });
