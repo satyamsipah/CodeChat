@@ -137,6 +137,9 @@ QUESTION: ${query}`;
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
   } catch (err) {
+    // Log full error so it appears in Render logs for diagnosis
+    console.error('[query] Error:', err.message);
+
     // Return a human-readable message instead of the raw API error
     let message = 'Something went wrong — please try again.';
     const raw = err.message || '';
@@ -146,6 +149,8 @@ QUESTION: ${query}`;
       message = 'Gemini API key is invalid or missing. Check the GEMINI_API_KEY environment variable.';
     } else if (raw.includes('503') || raw.toLowerCase().includes('unavailable')) {
       message = 'Gemini API is temporarily unavailable. Please try again in a moment.';
+    } else if (raw.toLowerCase().includes('vectorsearch') || raw.toLowerCase().includes('index')) {
+      message = 'Vector search index error — the Atlas Search index may not be active yet.';
     }
     res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
     res.end();
