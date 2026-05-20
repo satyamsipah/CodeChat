@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // ── Indexing progress view ────────────────────────────────────────────────────
@@ -74,9 +72,7 @@ function MessageBubble({ msg, githubUrl }) {
           {isUser ? (
             msg.content
           ) : (
-            <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
-              {msg.content}
-            </ReactMarkdown>
+            <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
           )}
         </div>
 
@@ -357,9 +353,7 @@ export default function ChatShell() {
             {isStreaming && (
               <div className="flex justify-start mb-4">
                 <div className="max-w-2xl bg-slate-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed text-slate-100">
-                  <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
-                    {streamingContent}
-                  </ReactMarkdown>
+                  <div className="whitespace-pre-wrap">{streamingContent}</div>
                   {/* Blinking cursor */}
                   <span className="inline-block w-0.5 h-4 bg-violet-400 animate-pulse ml-0.5 align-text-bottom" />
                 </div>
