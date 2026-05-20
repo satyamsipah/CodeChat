@@ -121,7 +121,7 @@ ${contextBlock}
 
 QUESTION: ${query}`;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
     const streamResult = await model.generateContentStream(prompt);
 
     for await (const chunk of streamResult.stream) {
