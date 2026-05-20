@@ -7,11 +7,15 @@ import { requireAuth } from '../middleware/requireAuth.js';
 const router = Router();
 
 // Cookie options reused across signup and login.
-// httpOnly prevents JS from reading the token (XSS protection).
-// sameSite:'strict' prevents the cookie being sent on cross-site requests (CSRF protection).
+// In production the frontend (Vercel) and backend (Render) are on different
+// domains, so the cookie must be SameSite=None; Secure — the only way
+// browsers will store a cross-site cookie sent with credentials:'include'.
+// Locally we keep sameSite:'lax' (no HTTPS) so dev still works.
+const isProd = process.env.NODE_ENV === 'production';
 const COOKIE_OPTS = {
   httpOnly: true,
-  sameSite: 'strict',
+  sameSite: isProd ? 'none' : 'lax',
+  secure:   isProd,               // 'none' requires Secure flag
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
 };
 
@@ -53,8 +57,9 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /api/auth/logout — just clears the cookie
+// Must pass same sameSite/secure options as Set-Cookie or browsers ignore it
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', { sameSite: isProd ? 'none' : 'lax', secure: isProd });
   res.json({ message: 'Logged out' });
 });
 
