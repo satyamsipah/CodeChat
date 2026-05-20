@@ -10,7 +10,6 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import mongoose from 'mongoose';
-import { ChromaClient } from 'chromadb';
 import { hybridSearch } from '../src/services/retrieval/hybridRetrieval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,8 +24,6 @@ if (!indexId) {
 }
 
 await mongoose.connect(process.env.MONGODB_URI);
-const chroma = new ChromaClient({ path: 'http://localhost:8000' });
-const collection = await chroma.getCollection({ name: `repo_${indexId}` });
 
 let hits = 0;
 console.log(`\nEvaluating ${dataset.length} questions for repo ${indexId}\n`);
@@ -35,7 +32,7 @@ console.log('─'.repeat(70));
 for (const { question, expectedFilePath } of dataset) {
   let top8;
   try {
-    top8 = await hybridSearch(question, indexId, collection);
+    top8 = await hybridSearch(question, indexId);
   } catch (err) {
     console.log(`  ✗ ERROR  — ${question.slice(0, 60)}`);
     console.log(`           ${err.message}`);
