@@ -7,6 +7,7 @@ export default function Login() {
   const [form, setForm]   = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
   const navigate = useNavigate();
 
   function handleChange(e) {
@@ -31,6 +32,24 @@ export default function Login() {
       setError('Network error — is the backend running?');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleGuest() {
+    setError('');
+    setGuestLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/guest`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      navigate('/add-repo');
+    } catch {
+      setError('Network error — is the backend running?');
+    } finally {
+      setGuestLoading(false);
     }
   }
 
@@ -71,6 +90,17 @@ export default function Login() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={handleGuest}
+            disabled={guestLoading}
+            className="w-full rounded-lg border border-slate-600 hover:border-slate-400 disabled:opacity-50 px-4 py-2.5 text-sm text-slate-300 hover:text-white transition-colors"
+          >
+            {guestLoading ? 'Starting guest session…' : 'Continue as Guest'}
+          </button>
+        </div>
 
         <p className="mt-5 text-center text-sm text-slate-400">
           Don't have an account?{' '}
