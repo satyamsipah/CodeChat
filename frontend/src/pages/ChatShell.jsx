@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // ── Indexing progress view ────────────────────────────────────────────────────
@@ -116,6 +116,7 @@ function MessageBubble({ msg, githubUrl }) {
 export default function ChatShell() {
   const { indexId } = useParams();
   const navigate = useNavigate();
+  const { user } = useOutletContext() ?? {};
 
   const [status, setStatus]           = useState('pending');
   const [chunksIndexed, setChunksIdx] = useState(0);
@@ -291,12 +292,19 @@ export default function ChatShell() {
             </div>
           )}
         </nav>
-        <button
-          onClick={handleLogout}
-          className="text-xs text-slate-500 hover:text-slate-300 text-left transition-colors"
-        >
-          Logout
-        </button>
+        <div className="flex items-center gap-2">
+          {user?.isGuest && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-900/60 text-amber-300">
+              Guest
+            </span>
+          )}
+          <button
+            onClick={handleLogout}
+            className="text-xs text-slate-500 hover:text-slate-300 text-left transition-colors"
+          >
+            Logout
+          </button>
+        </div>
       </aside>
 
       {/* Main area */}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -8,6 +8,7 @@ export default function AddRepo() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user } = useOutletContext() ?? {};
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -46,12 +47,19 @@ export default function AddRepo() {
               Paste a public GitHub URL — cloning takes ~30 s, embedding runs in the background.
             </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            {user?.isGuest && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-900/60 text-amber-300">
+                Guest
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="text-sm text-slate-400 hover:text-white transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex gap-3">

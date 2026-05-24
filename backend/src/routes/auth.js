@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
@@ -56,6 +57,16 @@ router.post('/login', async (req, res) => {
   res.json({ message: 'ok', user: { name: user.name, email: user.email } });
 });
 
+// POST /api/auth/guest — creates an ephemeral guest account valid for 24 h
+router.post('/guest', async (req, res) => {
+  const name = `guest_${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+  const guestExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const user = await User.create({ name, isGuest: true, guestExpiresAt });
+  const guestCookieOpts = { ...COOKIE_OPTS, maxAge: 24 * 60 * 60 * 1000 };
+  res.cookie('token', signToken(user._id), guestCookieOpts);
+  res.status(201).json({ message: 'ok', user: { name: user.name, isGuest: true } });
+});
+
 // POST /api/auth/logout — just clears the cookie
 // Must pass same sameSite/secure options as Set-Cookie or browsers ignore it
 router.post('/logout', (req, res) => {
@@ -65,7 +76,7 @@ router.post('/logout', (req, res) => {
 
 // GET /api/auth/me — used by the frontend ProtectedRoute to check auth state
 router.get('/me', requireAuth, async (req, res) => {
-  const user = await User.findById(req.userId).select('name email');
+  const user = await User.findById(req.userId).select('name email isGuest');
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ user });
 });
