@@ -12,6 +12,10 @@ export default function ProtectedRoute() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    if (localStorage.getItem('guestSessionId')) {
+      setStatus('ok');
+      return;
+    }
     fetch(`${API_URL}/api/auth/me`, { credentials: 'include' })
       .then(async (res) => {
         if (res.ok) {

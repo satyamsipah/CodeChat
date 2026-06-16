@@ -16,7 +16,9 @@ export default function Home() {
   }, []);
 
   async function handleLogout() {
-    await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    if (!auth.isGuest) {
+      await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    }
     clearGuestSession();
     setAuth({ user: null, isAuthenticated: false, isGuest: false, loading: false });
   }
@@ -160,14 +162,14 @@ export default function Home() {
               ? 'Cloning takes ~30 s; embedding runs in the background.'
               : isGuest
               ? <>
-                  Guest mode: up to 5 queries per session.{' '}
+                  Guest mode: up to 10 queries per session.{' '}
                   <Link to="/signup" className="text-violet-400 hover:underline">
                     Create a free account
                   </Link>{' '}
                   for unlimited access and saved history.
                 </>
               : <>
-                  Submit a URL to start as a guest (5 free queries) or{' '}
+                  Submit a URL to start as a guest (10 free queries) or{' '}
                   <Link to="/login" className="text-violet-400 hover:underline">sign in</Link>{' '}
                   for unlimited access.
                 </>

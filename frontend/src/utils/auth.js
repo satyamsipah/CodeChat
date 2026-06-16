@@ -25,6 +25,11 @@ export function buildHeaders(extra = {}) {
 }
 
 export async function fetchAuthState() {
+  const sessionId = getGuestSessionId();
+  if (sessionId) {
+    return { user: null, isAuthenticated: false, isGuest: true };
+  }
+
   try {
     const res = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' });
     if (res.ok) {
@@ -32,6 +37,5 @@ export async function fetchAuthState() {
       return { user: data.user, isAuthenticated: true, isGuest: false };
     }
   } catch { /* network error — treat as unauthenticated */ }
-  const sessionId = getGuestSessionId();
-  return { user: null, isAuthenticated: false, isGuest: !!sessionId };
+  return { user: null, isAuthenticated: false, isGuest: false };
 }
