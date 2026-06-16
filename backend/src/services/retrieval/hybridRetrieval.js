@@ -91,40 +91,59 @@ export async function hybridSearch(query, indexId) {
   });
   const queryVector = embedResult.embedding.values;
 
-  // 2. Semantic search — top 20 from Atlas Vector Search
-  const semanticResults = await Chunk.aggregate([
-    {
-      $vectorSearch: {
-        index: 'chunks_vector_index',
-        path: 'embedding',
-        queryVector,
-        numCandidates: 100,
-        limit: 20,
-        filter: { repoId: new mongoose.Types.ObjectId(String(indexId)) },
+  // 2. Semantic search — top 20 from Atlas Vector Search (non-fatal)
+  let semanticResults = [];
+  try {
+    semanticResults = await Chunk.aggregate([
+      {
+        $vectorSearch: {
+          index: 'chunks_vector_index',
+          path: 'embedding',
+          queryVector,
+          numCandidates: 100,
+          limit: 20,
+          filter: { repoId: new mongoose.Types.ObjectId(String(indexId)) },
+        },
       },
-    },
-    {
-      $project: {
-        _id: 0,
-        text: 1,
-        filePath: 1,
-        lineStart: 1,
-        lineEnd: 1,
-        chunkIndex: 1,
-        score: { $meta: 'vectorSearchScore' },
+      {
+        $project: {
+          _id: 0,
+          text: 1,
+          filePath: 1,
+          lineStart: 1,
+          lineEnd: 1,
+          chunkIndex: 1,
+          score: { $meta: 'vectorSearchScore' },
+        },
       },
-    },
-  ]);
+    ]);
+  } catch (err) {
+    console.error('[hybridSearch] $vectorSearch failed (falling back to BM25-only):', err.message);
+  }
 
-  // 3. BM25 keyword search — load serialized index from MongoDB
-  const repo = await IndexedRepo.findById(indexId).select('bm25Index');
-  const miniSearch = MiniSearch.loadJSON(repo.bm25Index, {
-    fields: ['text', 'filePath'],
-    storeFields: ['filePath', 'lineStart', 'lineEnd', 'chunkIndex', 'text'],
-  });
-  const bm25Results = miniSearch
-    .search(query, { fuzzy: 0.2, prefix: true, boost: { text: 2, filePath: 1 } })
-    .slice(0, 20);
+  // 3. BM25 keyword search — load serialized index from MongoDB (non-fatal)
+  let bm25Results = [];
+  try {
+    const repo = await IndexedRepo.findById(indexId).select('bm25Index');
+    if (repo?.bm25Index) {
+      const miniSearch = MiniSearch.loadJSON(repo.bm25Index, {
+        fields: ['text', 'filePath'],
+        storeFields: ['filePath', 'lineStart', 'lineEnd', 'chunkIndex', 'text'],
+      });
+      bm25Results = miniSearch
+        .search(query, { fuzzy: 0.2, prefix: true, boost: { text: 2, filePath: 1 } })
+        .slice(0, 20);
+    } else {
+      console.warn('[hybridSearch] bm25Index missing or empty — skipping BM25');
+    }
+  } catch (err) {
+    console.error('[hybridSearch] BM25 search failed (falling back to semantic-only):', err.message);
+  }
+
+  if (semanticResults.length === 0 && bm25Results.length === 0) {
+    console.warn('[hybridSearch] Both semantic and BM25 returned 0 results for indexId:', String(indexId));
+    return [];
+  }
 
   // 4. RRF merge → top 30
   const top30 = reciprocalRankFusion(semanticResults, bm25Results);
