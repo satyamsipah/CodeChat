@@ -1,0 +1,22 @@
+[
+  { "question": "Where is the Router class defined?",                               "expectedFilePath": "lib/router/index.js" },
+  { "question": "Where is res.json() defined?",                                     "expectedFilePath": "lib/response.js" },
+  { "question": "Where is the Layer class defined?",                                "expectedFilePath": "lib/router/layer.js" },
+  { "question": "Where does app.listen() start the HTTP server?",                  "expectedFilePath": "lib/application.js" },
+  { "question": "Where is the Route class defined?",                                "expectedFilePath": "lib/router/route.js" },
+  { "question": "Where does query string parsing happen?",                          "expectedFilePath": "lib/middleware/query.js" },
+  { "question": "Where is res.send() defined?",                                     "expectedFilePath": "lib/response.js" },
+  { "question": "Where does app.use() register middleware?",                        "expectedFilePath": "lib/application.js" },
+  { "question": "Where is the View class defined?",                                 "expectedFilePath": "lib/view.js" },
+  { "question": "Where does route layer matching with regex happen?",               "expectedFilePath": "lib/router/layer.js" },
+  { "question": "Where is req.path defined?",                                       "expectedFilePath": "lib/request.js" },
+  { "question": "Where is createApplication defined?",                              "expectedFilePath": "lib/application.js" },
+  { "question": "Where does the init middleware set x-powered-by header?",         "expectedFilePath": "lib/middleware/init.js" },
+  { "question": "Where does res.render() look up and render a view?",              "expectedFilePath": "lib/response.js" },
+  { "question": "Where is Route.dispatch() defined?",                              "expectedFilePath": "lib/router/route.js" },
+  { "question": "Where does Router.handle() process the middleware stack?",        "expectedFilePath": "lib/router/index.js" },
+  { "question": "Where is req.accepts() defined?",                                  "expectedFilePath": "lib/request.js" },
+  { "question": "Where does app.engine() register a template engine?",            "expectedFilePath": "lib/application.js" },
+  { "question": "Where does res.location() set the Location header?",             "expectedFilePath": "lib/response.js" },
+  { "question": "Where is req.get() defined for reading request headers?",        "expectedFilePath": "lib/request.js" }
+]
